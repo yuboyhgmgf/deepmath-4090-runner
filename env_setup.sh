@@ -15,8 +15,8 @@ echo "== 釘死的訓練 runtime（精確版本，fail-closed）=="
 "$VENV/bin/pip" install -q \
   "transformers==4.50.0" "peft==0.19.1" "accelerate==1.13.0" "huggingface_hub==0.36.0"
 
-echo "== math_common / builder 需要的 =="
-"$VENV/bin/pip" install -q "math-verify[antlr4_13_2]==0.9.0" "datasets==3.5.0" sentencepiece
+echo "== math_common / builder 需要的（datasets 對齊 run_sft_math._pip 的 4.0.0，避免每跑被就地覆蓋）=="
+"$VENV/bin/pip" install -q "math-verify[antlr4_13_2]==0.9.0" "datasets==4.0.0" sentencepiece
 
 echo "== 驗證版本 + bf16 =="
 "$VENV/bin/python" - <<'PYEOF'
@@ -30,9 +30,12 @@ assert not bad, f"[FATAL] runtime version mismatch (run_sft_math will reject): {
 print("torch", torch.__version__, "cuda_avail", torch.cuda.is_available(),
       "bf16", torch.cuda.is_bf16_supported() if torch.cuda.is_available() else "no-cuda")
 assert torch.cuda.is_available(), "[FATAL] no CUDA GPU visible"
-assert torch.cuda.is_bf16_supported(), "[FATAL] GPU has no bf16 (need Ada/Ampere+; T4 not allowed)"
 name = torch.cuda.get_device_name(0)
 cc = torch.cuda.get_device_capability(0)
+# torch 2.6 的 is_bf16_supported() 預設 including_emulation=True，在 T4 sm_75 會走軟體
+# 模擬回傳 True → 光靠它擋不掉 T4。改用明確的 compute-capability>=8.0 硬閘（Ada/Ampere+）。
+assert cc[0] >= 8, f"[FATAL] need compute capability >= 8.0 (Ada/Ampere+); got sm_{cc[0]}{cc[1]} ({name}); T4 sm_75 not allowed"
+assert torch.cuda.is_bf16_supported(), "[FATAL] GPU has no bf16 (need Ada/Ampere+)"
 print("GPU:", name, "cc", cc, "VRAM(GB)", round(torch.cuda.get_device_properties(0).total_memory/1e9,1))
 PYEOF
 echo "ENV_READY  ($VENV/bin/python)"

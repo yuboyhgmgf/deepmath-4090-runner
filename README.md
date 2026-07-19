@@ -3,7 +3,7 @@
 在**本機 24GB 4090 / 12GB 4070**上訓練 DeepMath 的 **DM-large**（50K rows, 4B LoRA, bf16）。
 目的分兩段：先跑 **1K smoke** 量「50K 要多久 + 會不會 OOM」，過了再跑 **development gate** 的全量訓練。
 
-> ⚠️ **這台只做訓練 + merge。** 正式 fallback eval 用 vLLM BI 尺、需 sm≥9.0（Colab G4），**4070/4090(sm_89) 跑不了 BI**，那步在別處做。訓練好的 adapter 會上 HF，由 G4 端下載評測。
+> ⚠️ **這台只做訓練（產出 adapter）。** merge 與正式 fallback eval 都在 G4/box 端做（eval 用 vLLM BI 尺、需 sm≥9.0，**4070/4090(sm_89) 跑不了 BI**）。訓練好的 adapter 會上 HF，由 G4 端下載 merge + 評測。
 
 ---
 
@@ -16,6 +16,7 @@
 ```bash
 export HF_TOKEN=<Yuivdldk 的 token>      # env-only，勿寫進檔案/命令歷史/repo
 ```
+> ⚠️ 首次需先以該 HF 帳號到 huggingface.co/google/gemma-3-4b-it **接受 Gemma 授權**，否則首跑下載模型會 401/gated。（Yuivdldk 帳號長期訓練此 revision，通常已接受。）
 
 ## 1. 建環境（一次）
 ```bash
@@ -56,6 +57,8 @@ MODE=development ARM=large SEED=42 \
 ```
 - 全量 50K、**會上傳 adapter 到 HF**（`UPLOAD_MODEL=1`）、**每 500 步 checkpoint 可續跑**（`CKPT_RESUME=1`）。
 - **每日時數不夠(如 4090 6-8h/天)沒關係**：跑到時間到就停,同指令重跑會從 HF/本地 checkpoint 續,不用重頭。
+  - ⚠️ 第一個 checkpoint 要到第 **500 步**(約整段 1/12、數十分鐘)才出現;**在那之前**斷電會從頭,之後每次中斷最多只丟 <500 步。
+  - 若剛好被 kill 在存檔當下留下半殘 checkpoint,同指令重跑會**自動丟棄半殘的、退回上一個完整的(本地或 HF)**續跑,不會卡死。
 - 跑完把 HF 上的 adapter repo 名稱回報,G4 端下載 → `merge_lora.py` → vLLM BI eval 500 internal-dev → dev gate。
 
 ## 5. 交回 eval（不在這台）

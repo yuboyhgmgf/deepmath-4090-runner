@@ -205,6 +205,16 @@ def _deepmath_local_checkpoint_ready(path):
     return True
 
 
+def _deepmath_local_checkpoint_safe(path):
+    """Non-raising variant of _deepmath_local_checkpoint_ready: True iff the dir
+    has every required file, else False. Used to *discard* a half-written
+    checkpoint (power-loss / kill during a save) instead of hard-failing resume."""
+    try:
+        return _deepmath_local_checkpoint_ready(path)
+    except RuntimeError:
+        return False
+
+
 def _deepmath_checkpoint_step(path):
     state_path = os.path.join(path, "trainer_state.json")
     try:
@@ -740,7 +750,23 @@ def main():
                     if CKPT_RESUME and os.path.isdir(trn_dir) else None
                 )
                 if DEEPMATH_RUN and local_last_ckpt:
-                    _deepmath_local_checkpoint_ready(local_last_ckpt)
+                    # A power-loss / kill during a checkpoint write can leave the
+                    # highest-numbered local checkpoint half-written. Do NOT hard-fail
+                    # (that wedges every subsequent same-command resume): discard the
+                    # incomplete dir and fall back to the next-best local checkpoint or
+                    # the verified Hub checkpoint restored above, so resume still works.
+                    _discarded = set()
+                    while local_last_ckpt and not _deepmath_local_checkpoint_safe(local_last_ckpt):
+                        if local_last_ckpt in _discarded:
+                            local_last_ckpt = None
+                            break
+                        _discarded.add(local_last_ckpt)
+                        print(f"[RESUME] discarding incomplete local checkpoint {local_last_ckpt}", flush=True)
+                        shutil.rmtree(local_last_ckpt, ignore_errors=True)
+                        local_last_ckpt = (
+                            get_last_checkpoint(trn_dir)
+                            if os.path.isdir(trn_dir) else None
+                        )
                 candidates = [
                     path for path in (local_last_ckpt, remote_resume_checkpoint) if path
                 ]

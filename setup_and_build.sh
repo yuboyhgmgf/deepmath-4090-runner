@@ -45,4 +45,32 @@ if [ "$GOT" = "$EXPECT" ]; then
 else
   echo "[FATAL] config_hash 不吻合: got=$GOT expected=$EXPECT（重建與 registered 不一致，停）"; exit 1
 fi
+
+echo "== 4. 資料指紋 sha256 交叉檢查（advisory）=="
+# config_hash 只證明「凍結常數」吻合，未證明重建語料與 registered 逐位元一致。這裡再比對
+# 真正的資料指紋。設為 advisory（不 exit）：尚未在本機實測重建是否 byte-deterministic——
+# 首建若全 [OK]，即可把此段升成硬閘；若 [WARN]，代表重建非決定性，先別拿來訓練並回報。
+"$VENV/bin/python" - "$BUILD" <<'PYEOF'
+import hashlib, os, sys
+build = sys.argv[1]
+expect = {
+    "dm_large_train.jsonl": "d45cf97b9079d32a21b29d0751e9e6fbc0047a1ed9e58adc66058af4cb82c0ef",
+    "dm_small_train.jsonl": "fdaa0bf60857707ec0b745c459c3600e48a6ec6f7edc3543d93f5a5c978472a8",
+}
+ok = True
+for name, want in expect.items():
+    p = os.path.join(build, name)
+    if not os.path.isfile(p):
+        print(f"[WARN] 缺 {name}，跳過指紋比對"); ok = False; continue
+    hsh = hashlib.sha256()
+    with open(p, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            hsh.update(chunk)
+    got = hsh.hexdigest()
+    print(f"[OK] {name} sha256 吻合 registered" if got == want
+          else f"[WARN] {name} sha256 不吻合: got={got} expected={want}")
+    ok = ok and got == want
+print("[OK] 資料指紋全部吻合（重建逐位元一致，可考慮把本段升成硬閘 exit 1）" if ok
+      else "[WARN] 資料指紋未全吻合——重建可能非決定性，請先別用來訓練並回報")
+PYEOF
 echo "BUILD_READY -> $BUILD/dm_large_train.jsonl  ($(wc -l < "$BUILD/dm_large_train.jsonl") rows)"

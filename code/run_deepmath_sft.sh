@@ -96,8 +96,9 @@ if [[ "$MODE" == "smoke" ]]; then
     exit 2
   fi
   N_TRAIN=1000
-  export UPLOAD_RESULTS="${UPLOAD_RESULTS:-0}"
-  export UPLOAD_MODEL="${UPLOAD_MODEL:-0}"
+  # smoke 一律不上傳：硬釘不可被殘留的環境變數（如跑過 formal 後遺留 UPLOAD_MODEL=1）覆寫。
+  export UPLOAD_RESULTS="0"
+  export UPLOAD_MODEL="0"
   export CKPT_RESUME="0"
 else
   if (( rows != 50000 )); then
