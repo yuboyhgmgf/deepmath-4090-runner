@@ -1,9 +1,15 @@
-# DeepMath 4090/4070 runner — DM-large 訓練
+# DeepMath 4090/4070 runner
 
+> **給自動化執行者（如 AGY）：此 repo 有兩個任務,別跑錯。**
+> - **訓練 DM-large** → 本檔（以下）。
+> - **dev-gate 評測（base vs DM-large 官方 BI 尺）** → 見 **[`eval/README.md`](eval/README.md)**。執行前你**必須被告知這台跑哪一臂**：`ARM=base` 或 `ARM=large`（兩台各一）。
+> - **HF_TOKEN 一律從環境變數讀,不要向使用者索取或印出。**
+
+## 任務一：訓練 DM-large
 在**本機 24GB 4090 / 12GB 4070**上訓練 DeepMath 的 **DM-large**（50K rows, 4B LoRA, bf16）。
 目的分兩段：先跑 **1K smoke** 量「50K 要多久 + 會不會 OOM」，過了再跑 **development gate** 的全量訓練。
 
-> ⚠️ **這台只做訓練（產出 adapter）。** merge 與正式 fallback eval 都在 G4/box 端做（eval 用 vLLM BI 尺、需 sm≥9.0，**4070/4090(sm_89) 跑不了 BI**）。訓練好的 adapter 會上 HF，由 G4 端下載 merge + 評測。
+> ⚠️ **本檔只做訓練（產出 adapter）。** 評測（merge + BI dev-gate）在 [`eval/`](eval/README.md)——**4070/4090（CC 8.9）可跑官方 BI 尺**（batch-invariant 真實門檻是 CC≥8.0，非 9.0）。訓練好的 adapter 會上 HF，由評測端下載 merge。
 
 ---
 
